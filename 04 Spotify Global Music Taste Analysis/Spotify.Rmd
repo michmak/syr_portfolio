@@ -1,0 +1,1274 @@
+---
+title: "Music Classification by Country via Spotify"
+author: "Emelia Barron Michelle Mak"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r Data Gathering}
+# ACCESS SPOTIFY DATA VIA API
+## Rspotify developed by tiagomendesdanta https://github.com/tiagomendesdantas/Rspotify
+## Spotifyr developed by Charlie Thompson https://www.rdocumentation.org/packages/spotifyr
+
+# INSTALL API REQUIREMENTS
+### install.packages("devtools")
+library(devtools)
+### install_github("tiagomendesdantas/Rspotify") 
+library(Rspotify)
+### install_github('charlie86/spotifyr')
+library(spotifyr)
+
+# client_id and client_secret have been removed from code because it allows access to personal data.
+#Sys.setenv(SPOTIFY_CLIENT_ID = 'INFORMATION REMOVED')
+#Sys.setenv(SPOTIFY_CLIENT_SECRET = 'INFORMATION REMOVED')
+
+#access_token <- get_spotify_access_token(client_id = Sys.getenv('SPOTIFY_CLIENT_ID'), client_secret = Sys.getenv('SPOTIFY_CLIENT_SECRET'))
+
+
+
+# DATA GATHERING 
+## GET TOP 50 SONGS FROM 5 COUNTRIES (as of September 12, 2018)
+spotify_playlists <- get_user_playlists('spotify')
+### filter playlist data to only 'Top 50' playlists from select countries + Top 50 Global
+library(dplyr)
+
+top50_playlists <- dplyr::filter(spotify_playlists, grepl('United States Top 50|Germany Top 50|Hong Kong Top 50|Norway Top 50|New Zealand Top 50|Singapore Top 50|Australia Top 50| Iceland Top 50|United Kingdom Top 50|Portugal Top 50|Mexico Top 50', playlist_name))
+
+Global_top50_playlist <- dplyr::filter(spotify_playlists, grepl('Global Top 50', playlist_name))
+
+### get audio features of all tracks
+tracks <- get_playlist_tracks(top50_playlists)
+allsongs_audiofeatures<- get_track_audio_features(tracks)
+
+Global_tracks <- get_playlist_tracks(Global_top50_playlist)
+Globalsongs_audiofeatures<- get_track_audio_features(Global_tracks)
+
+### combine data between 'tracks' and 'allsongs_audiofeatures' so that 
+### playlist, song name, and artist appears along side audio features
+final.table <- merge(tracks[,c("track_uri","playlist_name","track_name","artist_name")],allsongs_audiofeatures, by.x = c("track_uri"), by.y = c("track_uri"))
+
+### create a new column using data from playlist_name titled "country" to serve as the labels
+str(final.table)
+
+final.table$country = final.table$playlist_name
+str(final.table)
+
+### remove "Top 50" from country column
+final.table$country <- gsub(" Top 50", "", final.table$country)
+### update to factor to serve as label column
+final.table$country <- as.factor(final.table$country)
+
+#View(final.table)
+# save(final.table, file="GlobalAudioFeatures.RData") # save dataframe as RData file for ease of use
+```
+
+```{r Data Cleaning and Processing, include=FALSE}
+### save into a new df for analysis
+### organize by removing track_uri and playlist_name
+load("GlobalAudioFeatures.RData")
+spotifyDF <- final.table
+spotifyDF$track_uri <- NULL
+spotifyDF$playlist_name <-NULL
+
+### reorder columns
+spotifyDF <- spotifyDF[,c(17,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)]
+#View(spotifyDF)
+str(spotifyDF)
+
+colSums(is.na(spotifyDF)) #no NA's - WOOOOOOO!
+#check energy
+(table(spotifyDF$energy)) #everything looks good! save out this dataframe.
+# save(spotifyDF, file="SpotifyDF.RData")
+
+# TO START, YOU CAN LOAD .RDATA DATA HERE ----
+load("SpotifyDF.RData")
+# View(spotifyDF)
+
+### for exploratory analysis, put categorical data into its own data frame and convert key, mode, and key_mode columns into factors
+spotify_factors <- spotifyDF[c("country", "track_name","artist_name","key","mode","key_mode")]
+key_factors <- levels(spotify_factors$key) #save original labels
+mode_factors <- levels(spotify_factors$mode)
+key_mode_factors <- levels(spotify_factors$key_mode)
+
+# View(spotifyDF)
+
+
+# CREATE DF WITH ONLY NUMERICAL VALUES
+
+### the numerical data in spotifyDF are:
+  #energy
+  #loudness
+  #speechiness
+  #acousticness
+  #instumentalness
+  #liveness
+  #valence
+  #tempo
+  #duration_ms
+  #time_signature
+
+NumSpotifyDF <- spotifyDF
+# View(NumSpotifyDF)
+
+#remove non-numerical columns
+NumSpotifyDF$track_name <- NULL
+NumSpotifyDF$artist_name <-NULL
+NumSpotifyDF$key <-NULL
+NumSpotifyDF$mode <-NULL
+NumSpotifyDF$key_mode <- NULL
+str(NumSpotifyDF) #check
+
+
+### Randomize and Scale dataset for KNN and SVM
+library(class)
+library(caret)
+
+set.seed(1234) ## setting a seed to allow reproducible random results
+### Create 500 random numbers between 0 and 1
+(u_num <- runif(nrow(NumSpotifyDF)))
+### Use these random numbers (u_num) to shuffle the Spotify Data rows into a new data frame. Order by u_num - so random order. 
+RandomNumSpotify <- NumSpotifyDF[order(u_num),]
+head(RandomNumSpotify, n=15)
+
+### Normalize the data attributes
+#### Normalization is important so that no attributes overpower other attributes.
+(summary(RandomNumSpotify))
+
+PreProcessed_RandomNumSpotify <- preProcess(RandomNumSpotify[,-c(1)], method=c("scale"))
+transformed_RandomNumSpotify <- predict(PreProcessed_RandomNumSpotify, RandomNumSpotify[,-c(1)])
+
+# add the labels back into the Norm_train
+Norm_NumSpotify <- cbind(RandomNumSpotify$country, transformed_RandomNumSpotify)
+head(Norm_NumSpotify)
+
+colnames(Norm_NumSpotify)[colnames(Norm_NumSpotify)=="RandomNumSpotify$country"] <- "country"
+str(Norm_NumSpotify)
+
+### From now on, use Norm_NumSpotify as the dataset for KNN and SVM since it is randomized and scaled 
+
+### Create a Testset and a Trainset from Norm_NumSpotify
+### To create the Testset, randomly grab about 1/5 of the data
+(n <- round(nrow(Norm_NumSpotify)/5))
+(s <- sample(1:nrow(Norm_NumSpotify), n))
+SpotifyTestSet <- Norm_NumSpotify[s,] 
+SpotifyTrainSet <- Norm_NumSpotify[-s,]
+(head(SpotifyTestSet,n=15))
+(head(SpotifyTrainSet,n=15))
+
+```
+
+```{r Exploratory Analysis}
+#install.packages("quanteda")
+library(quanteda)
+library(arules)
+library(proxy)
+library(cluster)
+library(stringi)
+library(Matrix)
+#install.packages("tidytext")
+library(tidytext) 
+library(plyr)
+library(dplyr)
+library(readr)
+library(e1071)
+#install.packages("ROCR")
+library(ROCR)
+library(ggplot2)
+library(ggrepel)
+### explore categorical data first to see what type of information can be gathered
+# View(spotify_factors)
+
+## What is the most common key mode in popular songs? 
+duplicated(spotify_factors$track_name) # it looks like there are a lot of songs that are popular in multiple countries. let's make sure to remove these songs, so they don't skew the data.
+key_mode_upduped <- spotify_factors
+duplicated(key_mode_upduped$track_name)
+key_mode_upduped<-key_mode_upduped[!duplicated(key_mode_upduped$track_name), ]
+duplicated(key_mode_upduped) #check
+key_mode_upduped<-as.data.frame(key_mode_upduped)
+
+ggplot(key_mode_upduped, aes(x=key_mode, y=..count.. / sum(..count..), fill=country)) + geom_bar() + theme(axis.text.x=element_text(angle = 90,vjust = 0))
+### C Major, C# Major,and D Major seem to be the most common among popular songs
+
+#### TEXT MINING: Do the titles of songs matter? ####
+
+names <- spotifyDF[, c(2)]
+set.seed(123)
+wordcloud(names, max.words=250 ,random.order=FALSE,rot.per=0.35,colors=brewer.pal(4, "Dark2"), main="Title")
+
+#### What songs are the most joyful? - measured by valence ####
+## valence: A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry)
+
+#install.packages("kableExtra")
+library(kableExtra)
+library(knitr)
+
+spotifyDF %>% 
+    arrange(-valence) %>% 
+    select(track_name, valence) %>% 
+    head(5) %>% 
+    kable() %>%
+    kable_styling(bootstrap_options = "striped", full_width = F)
+### Shape of You Habibo, Dona Maria, Ahora Te Puedes Marchar, Mala Mia have the highest valence!!
+
+#### Create a Valence Map ####
+#install.packages("viridis")
+library(viridis)
+#install.packages("maps")
+library(maps)
+map.world <- map_data('world')
+
+map_data('world') %>% group_by(region) %>% summarise() %>% print(n = Inf) # calling this will produce an output showing all the region names. 
+
+for_map <-spotifyDF
+for_map$country <- as.character(for_map$country)
+
+for_map <- for_map %>% mutate(country = if_else(country == "United States", 'USA', 
+ if_else(country == "United Kingdom", 'UK', if_else(country == "Hong Kong", 'China', 
+ country))))
+
+valence_map <- left_join(map.world, for_map, by = c('region' = 'country'))
+
+ggplot(data = valence_map, aes(x = long, y = lat, group = group)) +
+ geom_polygon(aes(fill = `valence`)) + 
+scale_fill_viridis(option = 'plasma')+ 
+labs(title = "Countries with Happiest Music", subtitle = "Songs in Mexico are the happiest") + 
+theme_bw()
+
+#### Who are the most popular artists by country?####
+ArtistCountCountry <- final.table %>% group_by(country, artist_name) %>% summarize(n=n()) %>% top_n(n=1, wt=n)
+# View(ArtistCountCountry)
+
+### visualize
+ggplot(ArtistCountCountry, aes(x = reorder(country, -n), y = n, fill=artist_name)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Top Artist By Country", x = "Country", y = "Number of Appearance") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) + coord_flip()
+
+
+## Who are the most poular artists overall?
+ArtistCount <- final.table %>% group_by(artist_name) %>% summarize(n=n()) %>% top_n(n=5, wt=n)
+# View(ArtistCount)
+### visualize
+ggplot(ArtistCount, aes(x = reorder(artist_name, -n), y = n, fill=artist_name)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Top 5 Artist Overall", x = "Artist Name", y = "Number of Appearance") +
+  theme(plot.title = element_text(size=15,hjust=.05,face = "bold"), axis.title = element_text(size=12))
+
+
+
+## Correlation Matrix
+library(corrplot)
+SpotifyCorrelationMatrix <- cor(NumSpotifyDF[,-c(1)],use="complete.obs")
+corrplot(SpotifyCorrelationMatrix, method="color")
+
+# find attributes that are highly correlated (ideally >0.5)
+HighlyCorrelated <- findCorrelation(SpotifyCorrelationMatrix, cutoff=0.5)
+HighlyCorrelated
+
+#install.packages("PerformanceAnalytics")
+library(PerformanceAnalytics)
+chart.Correlation(NumSpotifyDF[,-c(1)], histogram = TRUE, pch = 19)
+
+###### Create a Collection of Mean Data for Grid Comparison ####
+## What is the mean valence for each country?
+MeanValence <- ddply(final.table,~country,summarise,mean=mean(valence))
+# View(MeanValence)
+
+### visualize
+S1<-ggplot(MeanValence, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Valence By Country", x = "Country", y = "Valence") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+S1
+
+## What is the mean danceability for each country?
+MeanDanceability <- ddply(final.table,~country,summarise,mean=mean(danceability))
+# View(MeanDanceability)
+
+### visualize
+S2<-ggplot(MeanDanceability, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Danceability By Country", x = "Country", y = "Danceability") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean energy for each country?
+MeanEnergy <- ddply(final.table,~country,summarise,mean=mean(energy))
+# View(MeanEnergy)
+
+### visualize
+S3<-ggplot(MeanEnergy, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Energy By Country", x = "Country", y = "Energy") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean loudness for each country?
+MeanLoudness <- ddply(final.table,~country,summarise,mean=mean(loudness))
+# View(MeanLoudness)
+
+### visualize
+S4<-ggplot(MeanLoudness, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Loudness By Country", x = "Country", y = "Loudness") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean speechiness for each country?
+MeanSpeechiness <- ddply(final.table,~country,summarise,mean=mean(speechiness))
+# View(MeanSpeechiness)
+
+### visualize
+S5<-ggplot(MeanSpeechiness, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Speechiness By Country", x = "Country", y = "Speechiness") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean acousticness for each country?
+MeanAcousticness <- ddply(final.table,~country,summarise,mean=mean(acousticness))
+# View(MeanAcousticness)
+
+### visualize
+S6<-ggplot(MeanAcousticness, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Acousticness By Country", x = "Country", y = "Acousticness") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean instrumentalness for each country?
+MeanInstrumentalness <- ddply(final.table,~country,summarise,mean=mean(instrumentalness))
+# View(MeanInstrumentalness)
+
+### visualize
+S7<-ggplot(MeanInstrumentalness, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Instrumentalness By Country", x = "Country", y = "Instrumentalness") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean liveness for each country?
+MeanLiveness <- ddply(final.table,~country,summarise,mean=mean(liveness))
+# View(MeanLiveness)
+
+### visualize
+S8<-ggplot(MeanLiveness, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Liveness By Country", x = "Country", y = "Liveness") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+
+## What is the mean tempo for each country?
+MeanTempo <- ddply(final.table,~country,summarise,mean=mean(tempo))
+# View(MeanTempo)
+
+### visualize
+S9<-ggplot(MeanTempo, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Tempo By Country", x = "Country", y = "Tempo") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+## What is the mean duration for each country?
+MeanDuration <- ddply(final.table,~country,summarise,mean=mean(duration_ms))
+# View(MeanDuration)
+
+### visualize
+S10<-ggplot(MeanDuration, aes(x = reorder(country, -mean), y = mean, fill=country)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Mean Duration By Country", x = "Country", y = "Duration") +
+  theme(plot.title = element_text(size=15,hjust=-.1,face = "bold"), axis.title = element_text(size=12)) +
+  coord_flip()
+
+
+##### Put all above  visualizations into a grid to compare #####
+#install.packages("grid")
+#install.packages("gridExtra")
+library(grid)
+library(gridExtra)
+library(ggplot2)
+the_grid <- grid.arrange(grobs=list(S1, S2, S3, S4, S5,S6, S7, S8, S9, S10), Top = "Main Title")
+the_grid
+
+
+```
+
+```{r Exploratory Analysis: Music Pattern Scatterplots by Country}
+# https://developer.spotify.com/documentation/web-api/reference/tracks/get-audio-features/
+
+### Valence & Energy
+p<-ggplot(spotifyDF, aes(x=valence, y=energy, color = country)) +
+  geom_point() +
+  lims(x=c(0.0,1.0),y=c(0.0,1.0)) +
+  theme_minimal() +
+  coord_fixed() +  
+  geom_vline(xintercept = 5) + geom_hline(yintercept = 5) 
+p <- p + theme(panel.border = element_rect(colour = "lightgrey", fill=NA, size=2.5)) 
+p <- p + geom_hline(yintercept=.50, color = "lightgrey", size=1.0)
+p <- p + geom_vline(xintercept=.50, color = "lightgrey", size=1.0)
+p <- p + geom_label(aes(x = .25, y = 1, label = "Turbulent/Angry"), 
+                    label.padding = unit(2, "mm"),  fill = "lightgrey", color="white")
+p <- p + geom_label(aes(x = .75, y = 1, label = "Happy/Joyful"), 
+                    label.padding = unit(2, "mm"), fill = "lightgrey", color="white")
+p <- p + geom_label(aes(x = .25, y = 0, label = "Sad/Depressing"), 
+                    label.padding = unit(2, "mm"),  fill = "lightgrey", color="white")
+p <- p + geom_label(aes(x = .75, y = 0, label = "Chill/Peaceful"), 
+                    label.padding = unit(2, "mm"), fill = "lightgrey", color="white")
+p
+
+
+### Tempo & Energy
+t<-ggplot(spotifyDF, aes(x=valence, y=speechiness, color = country)) +
+  geom_point() +
+  lims(x=c(0.0,1.0),y=c(0.0,1.0)) +
+  theme_minimal() +
+  coord_fixed() +  
+  geom_vline(xintercept = 5) + geom_hline(yintercept = 5) 
+t <- t + theme(panel.border = element_rect(colour = "lightgrey", fill=NA, size=2.5)) #should i take this out?
+t <- t + geom_hline(yintercept=.50, color = "lightgrey", size=1.0)
+t <- t + geom_vline(xintercept=.50, color = "lightgrey", size=1.0)
+t <- t + geom_label(size = 3, aes(x = .25, y = 1, label = "Ecstatic/High Speech"), 
+                    label.padding = unit(.5, "mm"),fill = "lightgrey", color="white")
+t <- t + geom_label(size = 3, aes(x = .75, y = 1, label = "Happy/High Speech"), 
+                    label.padding = unit(.5, "mm"), fill = "lightgrey", color="white")
+t <- t + geom_label(size = 3, aes(x = .25, y = 0, label = "Sad/Low Speech"), 
+                    label.padding = unit(.5, "mm"),  fill = "lightgrey", color="white")
+t <- t + geom_label(size = 3, aes(x = .75, y = 0, label = "Chill/Low Speech"), 
+                    label.padding = unit(.5, "mm"), fill = "lightgrey", color="white")
+t
+
+### Acousticness & Energy
+i<-ggplot(spotifyDF, aes(x=acousticness, y=energy, color = country)) +
+  geom_point() +
+  lims(x=c(0.0,1.0),y=c(0.0,1.0)) +
+  theme_minimal() +
+  coord_fixed() +  
+  geom_vline(xintercept = 5) + geom_hline(yintercept = 5) 
+i <- i + theme(panel.border = element_rect(colour = "lightgrey", fill=NA, size=2.5)) #should i take this out?
+i <- i + geom_hline(yintercept=.50, color = "lightgrey", size=1.0)
+i <- i + geom_vline(xintercept=.50, color = "lightgrey", size=1.0)
+i <- i + geom_label(size = 3, aes(x = .25, y = 1, label = "Acoustic/High Energy"), 
+                    label.padding = unit(.5, "mm"),fill = "lightgrey", color="white")
+i <- i + geom_label(size = 3, aes(x = .75, y = 1, label = "High Energy/Party"), 
+                    label.padding = unit(.5, "mm"), fill = "lightgrey", color="white")
+i <- i + geom_label(size = 3, aes(x = .25, y = 0, label = "Acoustic/Low Energy"), 
+                    label.padding = unit(.5, "mm"),  fill = "lightgrey", color="white")
+i <- i + geom_label(size = 3, aes(x = .75, y = 0, label = "Party/Low Energy"), 
+                    label.padding = unit(.5, "mm"), fill = "lightgrey", color="white")
+i
+
+### Valence and Instrumentalness
+v<-ggplot(spotifyDF, aes(x=valence, y=instrumentalness, color = country)) +
+  geom_point() +
+  lims(x=c(0.0,1.0),y=c(0.0,1.0)) +
+  theme_minimal() +
+  coord_fixed() +  
+  geom_vline(xintercept = 5) + geom_hline(yintercept = 5) 
+v <- v + theme(panel.border = element_rect(colour = "lightgrey", fill=NA, size=2.5)) #should i take this out?
+v <- v + geom_hline(yintercept=.50, color = "lightgrey", size=1.0)
+v <- v + geom_vline(xintercept=.50, color = "lightgrey", size=1.0)
+v <- v + geom_label(size = 3, aes(x = .25, y = 1, label = "Sad/Low Vocals"), 
+                    label.padding = unit(.5, "mm"),fill = "lightgrey", color="white")
+v <- v + geom_label(size = 3, aes(x = .75, y = 1, label = "Happy/Low Vocals"), 
+                    label.padding = unit(.5, "mm"), fill = "lightgrey", color="white")
+v <- v + geom_label(size = 3, aes(x = .25, y = 0, label = "Sad/Low Vocals"), 
+                    label.padding = unit(.5, "mm"),  fill = "lightgrey", color="white")
+v <- v + geom_label(size = 3, aes(x = .75, y = 0, label = "Happy/Low Vocals"), 
+                    label.padding = unit(.5, "mm"), fill = "lightgrey", color="white")
+v
+
+### All Graphs Together
+grid.arrange(grobs=list(p, t, i, v), Top = "Main Title")
+```
+
+
+```{r Analysis: Clustering}
+#install.packages("cluster")
+library(cluster)
+#install.packages("factoextra")
+library(factoextra)
+#install.packages("mclust")
+library(mclust)
+#install.packages("tm")
+library(tm)
+library(knitr)
+# Scale data set so attributes are not overpowering
+# View(NumSpotifyDF)
+ScaledNumSpotifyDF <- preProcess(NumSpotifyDF[,-c(1)], method=c("scale"))
+transformed_NumSpotify<-predict(ScaledNumSpotifyDF, NumSpotifyDF[,-c(1)])
+#add labels back
+ScaledNumSpotifyDF <- cbind(NumSpotifyDF$country, transformed_NumSpotify)
+colnames(ScaledNumSpotifyDF)[which(names(ScaledNumSpotifyDF) == "NumSpotifyDF$country")] <- "country"
+
+
+# MODEL BASED CLUSTERING
+## Option 1 - Assign to 10 clusters (10 countries)
+mcluster1 <- Mclust(ScaledNumSpotifyDF,G=10)
+(mcluster1)
+summary(mcluster1)
+plot(mcluster1, what = "classification")
+### The clusters are very hard to decipher because there are a lot of top songs in common in each country -- it looks like everyone has similar taste in music around the world
+
+## Option 2 - cluster with no k selected
+mcluster2 <- Mclust(ScaledNumSpotifyDF)
+(mcluster2)
+summary(mcluster2)
+plot(mcluster2, what = "classification")
+### This is not much cleaner than the first visualization
+
+# CLUSTERING WITH K-MEANS
+(k<-kmeans(ScaledNumSpotifyDF[,c(-1)], centers=10,iter.max=100,nstart=100)) # Choosing 10 to be the number of clusters because the possibilities are limited to the 10 country playlists
+
+(k2<-kmeans(ScaledNumSpotifyDF[,c(-1)], centers=4,iter.max=100,nstart=100)) 
+### visualize
+fviz_cluster(k, data=ScaledNumSpotifyDF[,-c(1)],ellipse.type = "convex")+ theme_minimal() # the clusters are hard to depict since it is in 2D. Use a confusion matrix decipher the k-means
+
+fviz_cluster(k2, data=ScaledNumSpotifyDF[,-c(1)],ellipse.type = "convex")+ theme_minimal()
+
+cluster1 <-as.data.frame(ScaledNumSpotifyDF) #transform matrix into a dataframe for compatability
+print(knitr::kable(table(cluster1[,1],k$cluster), format="markdown"))
+### Dominating countries by Cluster:
+#1 = Mexico
+#2= Germany or Portugal
+#3 = Hong Kong, Norway, or Singapore
+#4 = Portugal
+#5 = Hong Kong or Singapore
+#6 = Australia, Hong Kong, Mexico, Singapore, or UK
+#7 = Germany
+#8 = Hong Kong
+#9 = United Kingdom
+#10 = United States
+
+cluster2 <-as.data.frame(ScaledNumSpotifyDF) #transform matrix into a dataframe for compatability
+print(knitr::kable(table(cluster2[,1],k2$cluster), format="markdown"))
+#|               |  1|  2|  3|  4|
+#|:--------------|--:|--:|--:|--:|
+#|Australia      | 11| 29|  0| 10|
+#|Germany        |  4| 34|  1| 11|
+#|Hong Kong      | 19| 28|  0|  3|
+#|Mexico         |  5| 40|  0|  5|
+#|New Zealand    |  9| 31|  0| 10|
+#|Norway         | 11| 31|  0|  8|
+#|Portugal       | 11| 31|  0|  8|
+#|Singapore      | 20| 27|  0|  3|
+#|United Kingdom |  7| 33|  0| 10|
+#|United States  | 14| 23|  0| 13|
+
+# HEIRARCHICAL CLUSTERING 
+HC1 <- dist(ScaledNumSpotifyDF, method = "euclidean") # distance matrix
+fit1 <- hclust(HC1, method="ward.D2")
+plot(fit1, hang= -1, cex=0.6)# the dendrogram is unreadable because there are too many variables.
+rect.hclust(fit1,k=10)
+# Decipher the dendrogram
+cut <- cutree(fit1, k=10)
+knitr::kable(table(cut,NumSpotifyDF$country), format = "markdown")
+
+```
+
+
+```{r Analysis: K Nearest Neighbor}
+# K NEAREST NEIGHBOR
+### Choose k for the number of NN to be considered
+k <- round(sqrt(nrow(NumSpotifyDF)))
+kNN_fit <- knn(train=SpotifyTrainSet[,-1], test=SpotifyTestSet[,-1], 
+               cl=SpotifyTrainSet$country,k = k, prob=TRUE)
+print(kNN_fit)
+
+# Visualize kNN
+
+## Our kNN model is called kNN_fit
+plotSpotifyknn <- data.frame(SpotifyTestSet[,-1], predicted = kNN_fit)
+plotSpotifyknn
+# First use Convex hull to determine boundary points of each cluster
+### create a function to find the hull
+find_hull <- function(df) df[chull(df$x, df$y), ]
+
+boundary <- ddply(plotSpotifyknn, .variables = "predicted", .fun = find_hull)
+
+ggplot(plotSpotifyknn, aes(loudness, danceability, color = predicted, fill = predicted)) + 
+  geom_point(size = 5) + 
+  geom_polygon(data = boundary, aes(x,y), alpha = 0.5)
+
+## Check the classification accuracy
+#install.packages("descr")
+library(descr)
+(table(kNN_fit, SpotifyTestSet$country)) # The prediction scores are pretty low, so it doesn't look like KNN is able to accurately predict so far. 
+CrossTable(x = SpotifyTestSet$country, y = kNN_fit,prop.chisq=FALSE) 
+knn.cm <- confusionMatrix(kNN_fit, SpotifyTestSet$country)
+knn.accuracy <- knn.cm$overall["Accuracy"]
+knn.accuracy
+# 17% ACCURACY -- it is very low! 
+
+
+```
+
+```{r Analysis: Support Vector Machines}
+# SUPPORT VECTOR MACHINES
+# Use the same test and training sets as in KNN because it is already randomized and scaled
+
+## SVM MODEL 1
+# View(SpotifyTrainSet$country)
+Model_SVM_1 <- svm(country~., data=SpotifyTrainSet, kernel="polynomial", cost=.1, scale=FALSE)
+Model_SVM_1
+print(Model_SVM_1)
+
+#PREDICT
+SVM1_Pred <- predict(Model_SVM_1, SpotifyTestSet, type="class")
+confusionMatrix(SpotifyTestSet$country, SVM1_Pred) # 14% Accuracy
+
+
+Ptable <- table(SVM1_Pred, SpotifyTestSet$country)
+Ptable
+
+#misclassification rate for polynomial
+(MR_P <- 1 - sum(diag(Ptable))/sum(Ptable))
+#(~86.00% )
+
+## At this time - I had c (the cost) set to .1 for all tests.
+## Now, I will *tune* c
+#####  We can "tune" the SVM by altering the cost
+tuned_cost_P <- tune(svm,country~., data=SpotifyTrainSet,
+                   kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tuned_cost_P)  ## This shows that the best performance is 0.9
+## Because this tuning showed that the best cost is 1, I will update the cost to 1
+
+## Cost = 1
+SVM_fit_Spotify_P1 <- svm(country~., data=SpotifyTrainSet, 
+                         kernel="polynomial", cost=1, 
+                         scale=FALSE)
+print(SVM_fit_Spotify_P1)
+
+
+# PREDICT
+(pred_Spotify_P1 <- predict(SVM_fit_Spotify_P1, SpotifyTestSet, type="class"))
+(Spotify_table_P1<-table(pred_Spotify_P1, SpotifyTestSet$country))
+confusionMatrix(SpotifyTestSet$country, pred_Spotify_P1)
+# ACCURACY: 13% -- Slight decrease from the original model
+
+# VISUALIZE
+plot(SVM_fit_Spotify_P1, data=SpotifyTrainSet, acousticness~liveness, slice = list(speechiness = mean(SpotifyTrainSet$speechiness), instrumentalness = mean(SpotifyTrainSet$instrumentalness)))
+     
+plot(SVM_fit_Spotify_P1, data=SpotifyTrainSet, danceability~energy, slice = list(speechiness = mean(SpotifyTrainSet$speechiness), instrumentalness = mean(SpotifyTrainSet$instrumentalness)))
+
+plot(SVM_fit_Spotify_P1, data=SpotifyTrainSet, instrumentalness~valence, slice = list(speechiness = mean(SpotifyTrainSet$speechiness), acousticness = mean(SpotifyTrainSet$acousticness)))
+
+## SVM MODEL 2
+# View(SpotifyTrainSet$country)
+Model_SVM_2 <- svm(country~valence+speechiness+acousticness, data=SpotifyTrainSet, kernel="polynomial", cost=.1, scale=FALSE)
+Model_SVM_2
+print(Model_SVM_2)
+
+#PREDICT
+SVM2_Pred <- predict(Model_SVM_2, SpotifyTestSet, type="class")
+confusionMatrix(SpotifyTestSet$country, SVM2_Pred) # 14% Accuracy -- same as original model
+
+
+Ptable <- table(SVM2_Pred, SpotifyTestSet$country)
+Ptable
+
+#misclassification rate for polynomial
+(MR_P <- 1 - sum(diag(Ptable))/sum(Ptable))
+#(~86.00% )
+
+## At this time - I had c (the cost) set to .1 for all tests.
+## Now, I will *tune* c
+#####  We can "tune" the SVM by altering the cost
+tuned_cost_P <- tune(svm,country~valence+speechiness+acousticness, data=SpotifyTrainSet,
+                   kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tuned_cost_P)  ## This shows that the best performance is 0.9
+## Because this tuning showed that the best cost is 1, I will update the cost to 1
+
+## Cost = 1
+SVM_fit_Spotify_P2 <- svm(country~valence+speechiness+acousticness, data=SpotifyTrainSet, 
+                         kernel="polynomial", cost=1, 
+                         scale=FALSE)
+print(SVM_fit_Spotify_P2)
+
+
+# PREDICT
+(pred_Spotify_P2 <- predict(SVM_fit_Spotify_P2, SpotifyTestSet, type="class"))
+(Spotify_table_P2<-table(pred_Spotify_P2, SpotifyTestSet$country))
+confusionMatrix(SpotifyTestSet$country, pred_Spotify_P2)
+# ACCURACY: 13% -- Slight decrease from the original model
+
+# VISUALIZE
+plot(SVM_fit_Spotify_P2, data=SpotifyTrainSet, acousticness~liveness, slice = list(speechiness = mean(SpotifyTrainSet$speechiness), instrumentalness = mean(SpotifyTrainSet$instrumentalness)))
+     
+plot(SVM_fit_Spotify_P2, data=SpotifyTrainSet, danceability~energy, slice = list(speechiness = mean(SpotifyTrainSet$speechiness), instrumentalness = mean(SpotifyTrainSet$instrumentalness)))
+
+plot(SVM_fit_Spotify_P2, data=SpotifyTrainSet, instrumentalness~valence, slice = list(speechiness = mean(SpotifyTrainSet$speechiness), acousticness = mean(SpotifyTrainSet$acousticness)))
+
+
+```
+
+```{r Analysis: SVM One-Against-All}
+# SUPPORT VECTOR MACHINES
+# Use the same test and training sets as in KNN because it is already randomized and scaled
+
+# break out training dataset by country for one vs all method
+
+#### 1 UNITED STATES ####
+train_us<-SpotifyTrainSet
+train_us$country<-as.character(train_us$country)
+train_us$country[train_us$country!="United States"]<-'Other'
+train_us$country[train_us$country=="United States"]<-'US'
+train_us$country<-as.factor(train_us$country)
+
+test_us<-SpotifyTestSet
+test_us$country<-as.character(test_us$country)
+test_us$country[test_us$country!="United States"]<-'Other'
+test_us$country[test_us$country=="United States"]<-'US'
+test_us$country<-as.factor(test_us$country)
+
+tune_us<-tune(svm,country~.,data=train_us,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_us) # best cost is 0.001
+
+model_us<-svm(country~.,data=train_us,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_us)
+# VISUALIZE
+plot(model_us, data=train_us, acousticness~energy, slice = list(valence = mean(train_us$valence), instrumentalness = mean(train_us$instrumentalness)))
+
+# PREDICT
+predict_us<-predict(model_us,test_us[,-c(1)], type="class")
+confusionMatrix(test_us$country, predict_us) # 91% Accuracy!! 
+
+
+
+#### 2 GERMANY ####
+train_de<-SpotifyTrainSet
+train_de$country<-as.character(train_de$country)
+train_de$country[train_de$country!="Germany"]<-'Other'
+train_de$country[train_de$country=="Germany"]<-'Germany'
+train_de$country<-as.factor(train_de$country)
+
+test_de<-SpotifyTestSet
+test_de$country<-as.character(test_de$country)
+test_de$country[test_de$country!="Germany"]<-'Other'
+test_de$country[test_de$country=="Germany"]<-'Germany'
+test_de$country<-as.factor(test_de$country)
+
+tune_de<-tune(svm,country~.,data=train_de,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_de) # best cost is 0.001
+
+model_de<-svm(country~.,data=train_de,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_de)
+
+# VISUALIZE
+plot(model_de, data=train_de, acousticness~valence, slice = list(energy = mean(train_de$energy), loudness = mean(train_de$loudness)))
+
+# PREDICT
+predict_de<-predict(model_de,test_de[,-c(1)], type="class")
+confusionMatrix(test_de$country, predict_de) # 92% Accuracy!! 
+
+
+
+#### 3 MEXICO ####
+train_mx<-SpotifyTrainSet
+train_mx$country<-as.character(train_mx$country)
+train_mx$country[train_mx$country!="Mexico"]<-'Other'
+train_mx$country[train_mx$country=="Mexico"]<-'Mexico'
+train_mx$country<-as.factor(train_mx$country)
+
+test_mx<-SpotifyTestSet
+test_mx$country<-as.character(test_mx$country)
+test_mx$country[test_mx$country!="Mexico"]<-'Other'
+test_mx$country[test_mx$country=="Mexico"]<-'Mexico'
+test_mx$country<-as.factor(test_mx$country)
+
+tune_mx<-tune(svm,country~.,data=train_mx,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_mx) # best cost is 0.001
+
+model_mx<-svm(country~.,data=train_mx,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_mx)
+
+# VISUALIZE
+plot(model_mx, data=train_mx, danceability~valence, slice = list(energy = mean(train_mx$energy), loudness = mean(train_mx$loudness)))
+
+# PREDICT
+predict_mx<-predict(model_mx,test_mx[,-c(1)], type="class")
+confusionMatrix(test_mx$country, predict_mx) # 89% Accuracy!! -- this is lower than we anticipated because mexico showed a clear pattern of higher valence.
+
+#### 4 HONG KONG ####
+train_hk<-SpotifyTrainSet
+train_hk$country<-as.character(train_hk$country)
+train_hk$country[train_hk$country!="Hong Kong"]<-'Other'
+train_hk$country[train_hk$country=="Hong Kong"]<-'Hong Kong'
+train_hk$country<-as.factor(train_hk$country)
+
+test_hk<-SpotifyTestSet
+test_hk$country<-as.character(test_hk$country)
+test_hk$country[test_hk$country!="Hong Kong"]<-'Other'
+test_hk$country[test_hk$country=="Hong Kong"]<-'Hong Kong'
+test_hk$country<-as.factor(test_hk$country)
+
+tune_hk<-tune(svm,country~.,data=train_hk,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_hk) # best cost is 0.001
+
+model_hk<-svm(country~.,data=train_hk,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_hk)
+
+# VISUALIZE
+plot(model_hk, data=train_hk, acousticness~speechiness, slice = list(energy = mean(train_hk$energy), loudness = mean(train_hk$loudness)))
+
+# PREDICT
+predict_hk<-predict(model_hk,test_hk[,-c(1)], type="class")
+confusionMatrix(test_hk$country, predict_hk) # 90% Accuracy!! 
+
+
+
+#### 5 SINGAPORE ####
+train_sp<-SpotifyTrainSet
+train_sp$country<-as.character(train_sp$country)
+train_sp$country[train_sp$country!="Singapore"]<-'Other'
+train_sp$country[train_sp$country=="Singapore"]<-'Singapore'
+train_sp$country<-as.factor(train_sp$country)
+
+test_sp<-SpotifyTestSet
+test_sp$country<-as.character(test_sp$country)
+test_sp$country[test_sp$country!="Singapore"]<-'Other'
+test_sp$country[test_sp$country=="Singapore"]<-'Singapore'
+test_sp$country<-as.factor(test_sp$country)
+
+tune_sp<-tune(svm,country~.,data=train_sp,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_sp) # best cost is 0.001
+
+model_sp<-svm(country~.,data=train_sp,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_sp)
+
+# VISUALIZE
+plot(model_sp, data=train_sp, acousticness~speechiness, slice = list(energy = mean(train_sp$energy), loudness = mean(train_sp$loudness)))
+
+# PREDICT
+predict_sp<-predict(model_sp,test_sp[,-c(1)], type="class")
+confusionMatrix(test_sp$country, predict_sp) # 91% Accuracy!!
+
+
+
+#### 6 AUSTRALIA ####
+train_au<-SpotifyTrainSet
+train_au$country<-as.character(train_au$country)
+train_au$country[train_au$country!="Australia"]<-'Other'
+train_au$country[train_au$country=="Australia"]<-'Australia'
+train_au$country<-as.factor(train_au$country)
+
+test_au<-SpotifyTestSet
+test_au$country<-as.character(test_au$country)
+test_au$country[test_au$country!="Australia"]<-'Other'
+test_au$country[test_au$country=="Australia"]<-'Australia'
+test_au$country<- as.factor(test_au$country)
+
+tune_au<-tune(svm,country~.,data=train_au,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_au) # best cost is 0.001
+
+model_au<-svm(country~.,data=train_au,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_au)
+
+# VISUALIZE
+plot(model_au, data=train_au, danceability~valence, slice = list(energy = mean(train_au$energy), loudness = mean(train_au$loudness)))
+
+# PREDICT
+predict_au<-predict(model_au,test_au[,-c(1)], type="class")
+confusionMatrix(test_au$country, predict_au) # 91% Accuracy
+
+
+#### 7 NEW ZEALAND ####
+train_nz<-SpotifyTrainSet
+train_nz$country<-as.character(train_nz$country)
+train_nz$country[train_nz$country!="New Zealand"]<-'Other'
+train_nz$country[train_nz$country=="New Zealand"]<-'New Zealand'
+train_nz$country<-as.factor(train_nz$country)
+
+test_nz<-SpotifyTestSet
+test_nz$country<-as.character(test_nz$country)
+test_nz$country[test_nz$country!="New Zealand"]<-'Other'
+test_nz$country[test_nz$country=="New Zealand"]<-'New Zealand'
+test_nz$country<-as.factor(test_nz$country)
+
+tune_nz<-tune(svm,country~.,data=train_nz,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_nz) # best cost is 0.001
+
+model_nz<-svm(country~.,data=train_nz,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_nz)
+
+# VISUALIZE
+plot(model_nz, data=train_nz, danceability~valence, slice = list(energy = mean(train_nz$energy), loudness = mean(train_nz$loudness)))
+
+# PREDICT
+predict_nz<-predict(model_nz,test_nz[,-c(1)], type="class")
+confusionMatrix(test_nz$country, predict_nz) #86% Accuracy, which makes sense because the music probably is similar to that of Australia
+
+
+#### 8 NORWAY ####
+train_nw<-SpotifyTrainSet
+train_nw$country<-as.character(train_nw$country)
+train_nw$country[train_nw$country!="Norway"]<-'Other'
+train_nw$country[train_nw$country=="Norway"]<-'Norway'
+train_nw$country<-as.factor(train_nw$country)
+
+test_nw<-SpotifyTestSet
+test_nw$country<-as.character(test_nw$country)
+test_nw$country[test_nw$country!="Norway"]<-'Other'
+test_nw$country[test_nw$country=="Norway"]<-'Norway'
+test_nw$country<- as.factor(test_nw$country)
+
+tune_nw<-tune(svm,country~.,data=train_nw,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_nw) # best cost is 0.001
+
+model_nw<-svm(country~.,data=train_nw,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_nw)
+
+# VISUALIZE
+plot(model_nw, data=train_nw, danceability~valence, slice = list(energy = mean(train_nw$energy), loudness = mean(train_nw$loudness)))
+
+# PREDICT
+predict_nw<-predict(model_nw,test_nw[,-c(1)], type="class")
+confusionMatrix(test_nw$country, predict_nw) # 88% Accuracy
+
+
+#### 9 UNITED KINGDOM ####
+train_uk<-SpotifyTrainSet
+train_uk$country<-as.character(train_uk$country)
+train_uk$country[train_uk$country!="United Kingdom"]<-'Other'
+train_uk$country[train_uk$country=="United Kingdom"]<-'United Kingdom'
+train_uk$country<-as.factor(train_uk$country)
+
+test_uk<-SpotifyTestSet
+test_uk$country<-as.character(test_uk$country)
+test_uk$country[test_uk$country!="United Kingdom"]<-'Other'
+test_uk$country[test_uk$country=="United Kingdom"]<-'United Kingdom'
+test_uk$country<-as.factor(test_uk$country)
+
+tune_uk<-tune(svm,country~.,data=train_uk,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_uk) # best cost is 0.001
+
+model_uk<-svm(country~.,data=train_uk,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_uk)
+
+# VISUALIZE
+plot(model_uk, data=train_uk, liveness~acousticness, slice = list(energy = mean(train_uk$energy), loudness = mean(train_uk$loudness)))
+
+# PREDICT
+predict_uk<-predict(model_uk,test_uk[,-c(1)], type="class")
+confusionMatrix(test_uk$country, predict_uk) #92% accurate
+
+
+
+
+#### 10 PORTUGAL ####
+train_pg<-SpotifyTrainSet
+train_pg$country<-as.character(train_pg$country)
+train_pg$country[train_pg$country!="Portugal"]<-'Other'
+train_pg$country[train_pg$country=="Portugal"]<-'Portugal'
+train_pg$country<-as.factor(train_pg$country)
+
+test_pg<-SpotifyTestSet
+test_pg$country<-as.character(test_pg$country)
+test_pg$country[test_pg$country!="Portugal"]<-'Other'
+test_pg$country[test_pg$country=="Portugal"]<-'Portugal'
+test_pg$country<-as.factor(test_pg$country)
+
+tune_pg<-tune(svm,country~.,data=train_pg,kernel="polynomial", 
+                   ranges=list(cost=c(.001,.01,0.1,1,10,100,100)))
+summary(tune_pg) # best cost is 0.001
+
+model_pg<-svm(country~.,data=train_pg,kernel="polynomial",cost=0.001,scale=FALSE,probabilities=TRUE,na.action=na.omit) #c=0.001 according tune, scale =FALSE because dataset is already scaled
+summary(model_pg)
+
+# VISUALIZE
+plot(model_pg, data=train_pg, acousticness~speechiness, slice = list(energy = mean(train_pg$energy), loudness = mean(train_pg$loudness)))
+
+# PREDICT
+predict_pg<-predict(model_pg,test_pg[,-c(1)], type="class")
+confusionMatrix(test_pg$country, predict_pg) # 90% Accuracy!! 
+
+
+```
+
+```{r Analysis: Naive Bayes}
+# NAIVE BAYES
+
+### Split dataset for train and test
+indexes <- sample(1:nrow(NumSpotifyDF), size=0.8*nrow(NumSpotifyDF))
+
+NB_SpotifyTrain <- NumSpotifyDF[indexes, ]
+# View(NB_SpotifyTrain)
+NB_SpotifyTrainValues <- NB_SpotifyTrain[,-c(1)] #final training dataset
+
+NB_SpotifyTest <- NumSpotifyDF[-indexes, ]
+# View(NB_SpotifyTest)
+NB_SpotifyTestValues <- NB_SpotifyTest[,-c(1)] #final test dataset
+
+NB_SpotifyTrainLABELS <-NB_SpotifyTrain$country
+NB_SpotifyTestLABELS <- NB_SpotifyTest$country 
+
+
+
+#NB Model 1
+#install.packages("naivebayes")
+library(naivebayes)
+library(e1071)
+set.seed(1234)
+NB_Model1 <- naiveBayes(country~.,data=NB_SpotifyTrain)
+
+NB_Model1_Predict <- predict(NB_Model1, NB_SpotifyTest)
+print(NB_Model1_Predict)
+table(NB_Model1_Predict,NB_SpotifyTest$country)
+confusionMatrix(NB_Model1_Predict, NB_SpotifyTest$country) # only 11% accuracy
+plot(NB_Model1_Predict,las=2, xlab="", cex.names=0.6)
+
+
+## NB Model 2
+set.seed(1234)
+NB_Model2 <- naiveBayes(country ~ valence+danceability,data=NB_SpotifyTrain, na.action = na.pass)
+NB_Model2_Predict <- predict(NB_Model2, NB_SpotifyTest)
+print(NB_Model2_Predict)
+table(NB_Model2_Predict,NB_SpotifyTest$country) # 14% accuracy
+confusionMatrix(NB_Model2_Predict, NB_SpotifyTest$country)
+plot(NB_Model2_Predict, las=2, xlab="", cex.names=0.6)
+
+## NB Model 3
+set.seed(1234)
+NB_Model3 <- naiveBayes(country ~ valence+danceability+speechiness+tempo,data=NB_SpotifyTrain, na.action = na.pass)
+NB_Model3_Predict <- predict(NB_Model4, NB_SpotifyTest)
+print(NB_Model3_Predict)
+table(NB_Model3_Predict,NB_SpotifyTest$country) # 11% accuracy
+confusionMatrix(NB_Model3_Predict, NB_SpotifyTest$country)
+plot(NB_Model3_Predict, las=2, xlab="", cex.names=0.6)
+
+
+```
+
+```{r Analysis: Decision Tree}
+# DECISION TREE
+### classify by country
+### Unlike Naive Bayes, Decision Trees can run on discretized/categorical data, so there needs to be a bit of reorganizing
+
+# View(spotifyDF)
+DT_Spotify <- spotifyDF[,-c(2:3)]
+# View(DT_Spotify)
+
+### change characters into factors
+DT_Spotify$key<-as.factor(DT_Spotify$key)
+DT_Spotify$mode<-as.factor(DT_Spotify$mode)
+DT_Spotify$key_mode<-as.factor(DT_Spotify$key_mode)
+#### categorize danceability, energy, loudness
+#### danceability
+summary(DT_Spotify$danceability)
+DT_Spotify$danceabilitycategory <- 
+      cut(DT_Spotify$danceability, breaks=c(-Inf, 0.5960, 0.7090, 0.8160, Inf), 
+          labels=c("Standing","Sway", "Two-Step","Party"))
+#### energy
+summary(DT_Spotify$energy)
+DT_Spotify$Energycategory <- 
+      cut(DT_Spotify$energy, breaks=c(-Inf, 0.5630, 0.6800, 0.765, Inf), 
+          labels=c("Relaxing","Daytime", "Pregame","Ratchet"))
+#### loudness
+summary(DT_Spotify$loudness)
+DT_Spotify$Loudcategory <- 
+      cut(DT_Spotify$loudness, breaks=c(-Inf, -6.825, -5.713 , -4.706, Inf), 
+          labels=c("Soft","Medium", "Loud","Banger"))
+
+#### valence
+summary(DT_Spotify$valence)
+DT_Spotify$Valencecategory <- 
+      cut(DT_Spotify$valence, breaks=c(-Inf, 0.3290, 0.4460 , 0.5820, Inf), 
+          labels=c("Sad","Neutral", "Happy","Ecstatic"))
+
+### Build test and training dataset and removing country labels
+indexes <- sample(1:nrow(DT_Spotify), size=0.8*nrow(DT_Spotify))
+
+DT_SpotifyTrain <- DT_Spotify[indexes, ]
+# View(DT_SpotifyTrain)
+DT_SpotifyTrainValues <- DT_SpotifyTrain[,-c(1)] #final training dataset
+
+DT_SpotifyTest <- DT_Spotify[-indexes, ]
+# View(DT_SpotifyTest)
+DT_SpotifyTestValues <- DT_SpotifyTest[,-c(1)] #final test dataset
+
+DT_SpotifyTrainLabels <-DT_SpotifyTrain$country
+DT_SpotifyTestLabels <- DT_SpotifyTest$country 
+
+(head(DT_SpotifyTrainValues,n=5))
+(head(DT_SpotifyTestValues,n=5))
+
+DT_SpotifyTrainValues <- DT_SpotifyTrainValues[,-c(1,2,4,10)]
+(head(DT_SpotifyTrainValues,n=5))
+DT_SpotifyTestValues <- DT_SpotifyTestValues[,-c(1,2,4,10)]
+(head(DT_SpotifyTestValues,n=5))
+
+
+## Now, we can train and test the decision tree
+library(rpart)
+library(rattle)
+set.seed(1234)
+Treefit <- rpart(DT_SpotifyTrain$country ~ ., data = DT_SpotifyTrainValues, method="class")
+summary(Treefit)
+printcp(Treefit)
+predicted= predict(Treefit,DT_SpotifyTest, type="class")
+(Results <- data.frame(Predicted=predicted,Actual=DT_SpotifyTestLabels))
+(table(Results))
+fancyRpartPlot(Treefit)
+
+#install.packages("tree")
+library(tree)
+summary(tree(Treefit)) #Misclassification error rate: 0.765 = 306 / 400 
+
+
+# Model 2
+set.seed(1234)
+Treefit2 <- rpart(DT_SpotifyTrain$country ~ Valencecategory+instrumentalness+speechiness+acousticness, data = DT_SpotifyTrainValues, method="class")
+summary(Treefit2)
+predicted= predict(Treefit2,DT_SpotifyTest, type="class")
+Results2 <- data.frame(Predicted=predicted,Actual=DT_SpotifyTestLabels)
+(table(Results2))
+fancyRpartPlot(Treefit2)
+summary(tree(Treefit2)) #Misclassification error rate: 0.825 = 330 / 400 
+
+
+```
+
+```{r Analysis: Random Forest}
+library(randomForest)
+
+#########RANDOM FOREST
+
+#Model RF 1
+RF_Model1 <- randomForest(country ~ . , data = NB_SpotifyTrain)
+print(RF_Model1)
+
+#PREDICT
+RF_Model1_Pred <-predict(RF_Model1, NB_SpotifyTest)
+RF_Model1_Pred
+
+confusionMatrix(NB_SpotifyTest$country, RF_Model1_Pred)
+
+(table(RF_Model1_Pred, NB_SpotifyTest$country))
+(attributes(RF_Model1))
+(RF_Model1$confusion)
+(RF_Model1$classes)
+#(~11% ACCURACY)
+
+#visualize
+hist(treesize(RF_Model1))
+varImpPlot(RF_Model1)
+
+
+#Model RF 2
+train_control_RF <- trainControl(method = "cv", number = 3) #3 folds (split into 3)
+set.seed(300)
+RF_Model2 <- caret::train(country~., data = NB_SpotifyTrain, method = "rf", trControl = train_control_RF)
+RF_Model2 
+#(~13% ACCURACY)
+
+#PREDICT
+pred_RF2 <-predict(RF_Model2, NB_SpotifyTest)
+pred_RF2
+
+confusionMatrix(NB_SpotifyTest$country, pred_RF2)
+(table(pred_RF2, NB_SpotifyTest$country))
+#(~12% ACCURACY)
+
+
+#Model RF 3
+train_control_RF <- trainControl(method = "cv", number = 3) #3 folds (split into 3)
+set.seed(300)
+RF_Model3 <- caret::train(country~energy+valence+duration_ms+time_signature+speechiness+acousticness+instrumentalness+liveness+loudness+danceability+tempo, data = NB_SpotifyTrain, method = "rf", trControl = train_control_RF)
+RF_Model3
+#(~14% ACCURACY)
+
+#PREDICT
+pred_RF3 <-predict(RF_Model3, NB_SpotifyTest)
+pred_RF3
+
+confusionMatrix(NB_SpotifyTest$country, pred_RF3)
+(table(pred_RF3, NB_SpotifyTest$country))
+#(~12% ACCURACY)
+
+```
+
+```{r}
+#install.packages("arules")
+library(arules)
+detach(package:tm, unload=TRUE) #must detach tm package because the inspect function conflicts with arules
+
+#turn transactional data crated for decision tree dataframe for apriori
+ap_spotify <-DT_Spotify[,-c(2:14)]
+head(ap_spotify)
+rules = apriori(ap_spotify, parameter = list(support=0.005, confidence=.8)) ##load the transformed data into the apriori algorithm 
+summary (rules)
+#inspect rules
+options(digits=2)
+inspect(rules[1:20])
+
+#sort rules
+rules<-sort(rules, by="confidence", decreasing=TRUE)
+inspect(rules[1:25])
+
+#revise rule
+rules = apriori(ap_spotify, parameter = list(support=0.05, confidence=0.65, minlen=2))
+summary(rules)
+inspect(rules[1:20])
+
+# classify by country on rhs
+#### Germany ####
+country_rules<-apriori(data=ap_spotify,parameter = list(supp=.01, conf=.2),
+                      appearance = list(default="lhs", rhs=c("country=Germany")), 
+                     control=list(verbose=FALSE))
+country_rules<-sort(country_rules, decreasing=TRUE,by="confidence")
+summary(country_rules)
+inspect(country_rules)
+#[1] {danceabilitycategory=Two-Step,                                                   
+#    Loudcategory=Medium}           => {country=Germany}   0.012       0.29  2.9     6
+#[2] {Energycategory=Ratchet,                                                          
+#    Loudcategory=Medium}           => {country=Germany}   0.010       0.26  2.6     5
+#[3] {danceabilitycategory=Two-Step,                                                   
+#     Energycategory=Ratchet,                                                          
+#     Valencecategory=Ecstatic}      => {country=Germany}   0.012       0.22  2.2     6
+
+#### United States ####
+country_rules<-apriori(data=ap_spotify,parameter = list(supp=.01, conf=.3),
+                      appearance = list(default="lhs", rhs=c("country=United States")), 
+                     control=list(verbose=FALSE))
+country_rules<-sort(country_rules, decreasing=TRUE,by="confidence")
+summary(country_rules)
+inspect(country_rules)
+#    lhs                                rhs                     support confidence lift count
+#[1] {danceabilitycategory=Two-Step,                                                         
+#     Valencecategory=Sad}           => {country=United States}   0.012       0.40  4.0     6
+#[2] {danceabilitycategory=Two-Step,                                                         
+#     Energycategory=Relaxing}       => {country=United States}   0.012       0.26  2.6     6
+#[3] {Energycategory=Relaxing,                                                               
+#     Loudcategory=Medium}           => {country=United States}   0.012       0.23  2.3     6
+#[4] {danceabilitycategory=Two-Step,                                                         
+#     Loudcategory=Soft}             => {country=United States}   0.010       0.23  2.3     5
+#[5] {key_mode=G# major}             => {country=United States}   0.014       0.21  2.1     7
+
+#### Mexico ####
+country_rules<-apriori(data=ap_spotify,parameter = list(supp=.02, conf=.4),
+                      appearance = list(default="lhs", rhs=c("country=Mexico")), 
+                     control=list(verbose=FALSE))
+country_rules<-sort(country_rules, decreasing=TRUE,by="confidence")
+summary(country_rules)
+inspect(country_rules)
+#[1] {danceabilitycategory=Two-Step,                                                  
+#     Loudcategory=Banger,                                                            
+#     Valencecategory=Ecstatic}      => {country=Mexico}   0.022       0.41  4.1    11
+
+
+```
+
