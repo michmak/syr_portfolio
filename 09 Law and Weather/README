@@ -1,4 +1,5 @@
 Required software: Python, Google Colab, FBProphet
+** Recommend running these files in Google Colab
 
 WEATHERDATA.IPYNB
 NYC_CRIME.IPYNB
