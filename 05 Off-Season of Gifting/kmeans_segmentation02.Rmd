@@ -1,0 +1,402 @@
+---
+title: "Mar653_Final"
+author: "Michelle Mak"
+date: "12/9/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Load Data}
+original_data <- read.csv("DMEFExtractSummaryV01.csv")
+#sample <- read.csv("modified_dataset.csv")
+```
+
+```{r Remove NAs}
+str(original_data[,142:159])
+
+# Clean NA's
+myDataClean <- na.omit(original_data)
+dim(myDataClean)
+summary(myDataClean)
+colSums(is.na(myDataClean)) #no na's! 
+str(myDataClean[,142:159])
+
+#write.csv(myDataClean, file = "Clean_Cust_Data.csv")
+```
+
+```{r More PreProcessing}
+
+# Create copy of cleaned data for manipulation
+cust_infoDF <-myDataClean
+
+# Convert characters to integers
+cust_infoDF$FirstChannel <- as.integer(cust_infoDF$FirstChannel)
+cust_infoDF$Email <- as.integer(cust_infoDF$Email)
+
+
+# drop extra levels and convert to factors
+cust_infoDF$Travel[cust_infoDF$Travel==' ']=NA
+cust_infoDF$Travel= droplevels(cust_infoDF$Travel)
+cust_infoDF$Travel <- as.integer(cust_infoDF$Travel)
+str(cust_infoDF$Travel)
+
+cust_infoDF$CurrAff[cust_infoDF$CurrAff==' ']=NA
+cust_infoDF$CurrAff= droplevels(cust_infoDF$CurrAff)
+cust_infoDF$CurrAff <- as.integer(cust_infoDF$CurrAff)
+str(cust_infoDF$CurrAff)
+
+cust_infoDF$CurrEv[cust_infoDF$CurrEv==' ']=NA
+cust_infoDF$CurrEv= droplevels(cust_infoDF$CurrEv)
+cust_infoDF$CurrEv <- as.integer(cust_infoDF$CurrEv)
+str(cust_infoDF$CurrEv)
+
+cust_infoDF$Wines[cust_infoDF$Wines==' ']=NA
+cust_infoDF$Wines= droplevels(cust_infoDF$Wines)
+cust_infoDF$Wines <- as.integer(cust_infoDF$Wines)
+str(cust_infoDF$Wines)
+
+cust_infoDF$FineArts[cust_infoDF$FineArts==' ']=NA
+cust_infoDF$FineArts= droplevels(cust_infoDF$FineArts)
+cust_infoDF$FineArts <- as.integer(cust_infoDF$FineArts)
+str(cust_infoDF$FineArts)
+
+cust_infoDF$Exercise[cust_infoDF$Exercise==' ']=NA
+cust_infoDF$Exercise= droplevels(cust_infoDF$Exercise)
+cust_infoDF$Exercise <- as.integer(cust_infoDF$Exercise)
+str(cust_infoDF$Exercise)
+
+cust_infoDF$SelfHelp[cust_infoDF$SelfHelp==' ']=NA
+cust_infoDF$SelfHelp= droplevels(cust_infoDF$SelfHelp)
+cust_infoDF$SelfHelp <- as.integer(cust_infoDF$SelfHelp)
+str(cust_infoDF$SelfHelp)
+
+cust_infoDF$Collect[cust_infoDF$Collect==' ']=NA
+cust_infoDF$Collect= droplevels(cust_infoDF$Collect)
+cust_infoDF$Collect <- as.integer(cust_infoDF$Collect)
+str(cust_infoDF$Collect)
+
+cust_infoDF$Needle[cust_infoDF$Needle==' ']=NA
+cust_infoDF$Needle= droplevels(cust_infoDF$Needle)
+cust_infoDF$Needle <- as.integer(cust_infoDF$Needle)
+str(cust_infoDF$Needle)
+
+cust_infoDF$Sewing[cust_infoDF$Sewing==' ']=NA
+cust_infoDF$Sewing= droplevels(cust_infoDF$Sewing)
+cust_infoDF$Sewing <- as.integer(cust_infoDF$Sewing)
+str(cust_infoDF$Sewing)
+
+cust_infoDF$DogOwner[cust_infoDF$DogOwner==' ']=NA
+cust_infoDF$DogOwner= droplevels(cust_infoDF$DogOwner)
+cust_infoDF$DogOwner <- as.integer(cust_infoDF$DogOwner)
+str(cust_infoDF$DogOwner)
+
+cust_infoDF$CarOwner[cust_infoDF$CarOwner==' ']=NA
+cust_infoDF$CarOwner= droplevels(cust_infoDF$CarOwner)
+cust_infoDF$CarOwner <- as.integer(cust_infoDF$CarOwner)
+str(cust_infoDF$CarOwner)
+
+cust_infoDF$Cooking[cust_infoDF$Cooking==' ']=NA
+cust_infoDF$Cooking= droplevels(cust_infoDF$Cooking)
+cust_infoDF$Cooking <- as.integer(cust_infoDF$Cooking)
+str(cust_infoDF$Cooking)
+
+cust_infoDF$Pets[cust_infoDF$Pets==' ']=NA
+cust_infoDF$Pets= droplevels(cust_infoDF$Pets)
+cust_infoDF$Pets <- as.integer(cust_infoDF$Pets)
+str(cust_infoDF$Pets)
+
+cust_infoDF$Fashion[cust_infoDF$Fashion==' ']=NA
+cust_infoDF$Fashion= droplevels(cust_infoDF$Fashion)
+cust_infoDF$Fashion <- as.integer(cust_infoDF$Fashion)
+str(cust_infoDF$Fashion)
+
+cust_infoDF$Hunting[cust_infoDF$Hunting==' ']=NA
+cust_infoDF$Hunting= droplevels(cust_infoDF$Hunting)
+cust_infoDF$Hunting <- as.integer(cust_infoDF$Hunting)
+str(cust_infoDF$Hunting)
+
+cust_infoDF$Camping[cust_infoDF$Camping==' ']=NA
+cust_infoDF$Camping= droplevels(cust_infoDF$Camping)
+cust_infoDF$Camping <- as.integer(cust_infoDF$Camping)
+
+cust_infoDF$Boating[cust_infoDF$Boating==' ']=NA
+cust_infoDF$Boating= droplevels(cust_infoDF$Boating)
+cust_infoDF$Boating <- as.integer(cust_infoDF$Boating)
+
+cust_infoDF$Child0_2[cust_infoDF$Child0_2==' ']=NA
+cust_infoDF$Child0_2= droplevels(cust_infoDF$Child0_2)
+cust_infoDF$Child0_2 <- as.integer(cust_infoDF$Child0_2)
+
+cust_infoDF$Child3_5[cust_infoDF$Child3_5==' ']=NA
+cust_infoDF$Child3_5= droplevels(cust_infoDF$Child3_5)
+cust_infoDF$Child3_5 <- as.integer(cust_infoDF$Child3_5)
+
+cust_infoDF$Child6_11[cust_infoDF$Child6_11==' ']=NA
+cust_infoDF$Child6_11= droplevels(cust_infoDF$Child6_11)
+cust_infoDF$Child6_11 <- as.integer(cust_infoDF$Child6_11)
+
+cust_infoDF$Child12_16[cust_infoDF$Child12_16==' ']=NA
+cust_infoDF$Child12_16= droplevels(cust_infoDF$Child12_16)
+cust_infoDF$Child12_16 <- as.integer(cust_infoDF$Child12_16)
+
+cust_infoDF$Child17_18[cust_infoDF$Child17_18==' ']=NA
+cust_infoDF$Child17_18= droplevels(cust_infoDF$Child17_18)
+cust_infoDF$Child17_18 <- as.integer(cust_infoDF$Child17_18)
+
+
+str(cust_infoDF[,163:167])
+cust_infoDF <- na.omit(cust_infoDF)
+colSums(is.na(cust_infoDF))
+#cust_infoDF
+```
+
+```{r Exploratory Analysis}
+# What are the average prices spent on items in the spring vs. the fall? 
+
+## create new dataframe
+Fall_Numbers <- cust_infoDF[c("RetF07Dollars", "RetF07Lines", "RetF06Dollars", "RetF06Lines", "RetF05Dollars", "RetF05Lines", "RetF04Dollars", "RetF04Lines", "IntF07GDollars", "IntF07NGDollars", "IntF07Lines", "IntF06GDollars", "IntF06NGDollars", "IntF06Lines", "IntF05GDollars", "IntF05NGDollars", "IntF05Lines", "IntF04GDollars", "IntF04NGDollars", "IntF04Lines", "CatF07GDollars", "CatF07NGDollars", "CatF07Lines", "CatF06GDollars", "CatF06NGDollars","CatF06Lines", "IntF05GDollars", "IntF05NGDollars", "CatF05Lines", "CatF04GDollars", "CatF04NGDollars", "CatF04Lines")] 
+
+Spring_Numbers <- cust_infoDF[c("RetS07Dollars", "RetS07Lines", "RetS06Dollars", "RetS06Lines", "RetS05Dollars", "RetS05Lines", "RetS04Dollars", "RetS04Lines", "IntS07GDollars", "IntS07NGDollars", "IntS07Lines", "IntS06GDollars", "IntS06NGDollars", "IntS06Lines", "IntS05GDollars", "IntS05NGDollars", "IntS05Lines", "IntS04GDollars", "IntS04NGDollars", "IntS04Lines", "CatS07GDollars", "CatS07NGDollars", "CatS07Lines", "CatS06GDollars", "CatS06NGDollars","CatS06Lines", "IntS05GDollars", "IntS05NGDollars", "CatS05Lines", "CatS04GDollars", "CatS04NGDollars", "CatS04Lines")]
+
+## Sum of all columns
+colSums(Fall_Numbers)
+colSums(Spring_Numbers)
+
+
+## Avg prices by total order
+is.na(Fall_Numbers) <- Fall_Numbers==0 #make 0's na's so they don't negatively skew the avg
+colMeans(Fall_Numbers,  na.rm = TRUE, dims = 1)
+
+is.na(Spring_Numbers) <- Spring_Numbers==0
+colMeans(Spring_Numbers, na.rm = TRUE, dims = 1)
+
+```
+
+# Average Fall Numbers    
+   RetF07Dollars       RetF07Lines     RetF06Dollars       RetF06Lines     RetF05Dollars 
+        90.069930          7.599650         66.557434          5.127114         64.106752 
+      RetF05Lines     RetF04Dollars       RetF04Lines    IntF07GDollars   IntF07NGDollars 
+         5.109968         64.176297          4.810731         98.625974         94.575000 
+      IntF07Lines    IntF06GDollars   IntF06NGDollars       IntF06Lines    IntF05GDollars 
+         2.599089         81.686688         81.679688          2.035471         81.125201 
+  IntF05NGDollars       IntF05Lines    IntF04GDollars   IntF04NGDollars       IntF04Lines 
+        73.818182          2.163073         82.072527         72.840796          2.065487 
+   CatF07GDollars   CatF07NGDollars       CatF07Lines    CatF06GDollars   CatF06NGDollars 
+       109.149002        103.125850          2.658038         95.896410         93.272093 
+      CatF06Lines  IntF05GDollars.1 IntF05NGDollars.1       CatF05Lines    CatF04GDollars 
+         2.341850         81.125201         73.818182          2.217133         83.419534 
+  CatF04NGDollars       CatF04Lines 
+        84.558195          2.133705
+        
+# Average Spring Numbers
+    RetS07Dollars       RetS07Lines     RetS06Dollars       RetS06Lines     RetS05Dollars 
+        56.543750          5.151042         51.126706          4.661793         48.453029 
+      RetS05Lines     RetS04Dollars       RetS04Lines    IntS07GDollars   IntS07NGDollars 
+         4.296752         51.701280          4.551920         52.448864         75.885714 
+      IntS07Lines    IntS06GDollars   IntS06NGDollars       IntS06Lines    IntS05GDollars 
+         1.500000         52.934884         60.800000          1.386282         51.443850 
+  IntS05NGDollars       IntS05Lines    IntS04GDollars   IntS04NGDollars       IntS04Lines 
+        52.257143          1.482759         48.733871         48.971429          1.428571 
+   CatS07GDollars   CatS07NGDollars       CatS07Lines    CatS06GDollars   CatS06NGDollars 
+        65.520930         66.278481          1.541353         63.169421         69.328000 
+      CatS06Lines  IntS05GDollars.1 IntS05NGDollars.1       CatS05Lines    CatS04GDollars 
+         1.510769         51.443850         52.257143          1.582237         49.720812 
+  CatS04NGDollars       CatS04Lines 
+        78.750000          1.517510 
+       
+
+
+```{r Retail, Internet, Catalog}
+retail <- cust_infoDF[3:29]
+colSums(retail)
+
+internet <- cust_infoDF[31:66]
+colSums(internet)
+
+catalog <- cust_infoDF[68:103]
+colSums(catalog)
+```
+  
+```{r K means PreProcessing}
+#install.packages("cluster")
+library(cluster)
+#install.packages("factoextra")
+library(factoextra)
+#install.packages("mclust")
+library(mclust)
+#install.packages("tm")
+library(tm)
+library(knitr)
+library(caret)
+
+kmeansdata <- cust_infoDF[,c(136:170)]
+kmeansdata$AcqDate = substr(kmeansdata$AcqDate ,1,nchar(kmeansdata$AcqDate )-2) #change acqdate to year of acquisition 
+kmeansdata$AcqDate <- as.integer(kmeansdata$AcqDate)
+
+str(kmeansdata)
+colSums(is.na(kmeansdata))
+
+scaled_data <- scale(kmeansdata)
+head(scaled_data)
+
+#Add Cust_ID back to data
+scaled_data  <- cbind(cust_infoDF$Cust_ID, scaled_data)
+colnames(scaled_data)[1] <- "Cust_ID"
+head(scaled_data)
+
+```
+
+```{r}
+# CLUSTERING WITH K-MEANS
+k <- kmeans(scaled_data[,c(-1)],2,nstart = 50,iter.max = 15) 
+
+# Clustering with 2 center (Fall vs. Spring Shoppers?)
+k2 <- kmeans(scaled_data[,c(-1)],2,nstart = 50,iter.max = 15) # keep number of iter.max=15 to ensure the algorithm converges and nstart=50 to #ensure that at least 50 random sets are choosen  
+k2
+
+fviz_cluster(k2, data=scaled_data[,c(-1)],ellipse.type = "convex")+ theme_minimal() # the clusters are hard to depict since it is in 2D. Use a confusion matrix decipher the k-means
+
+```
+
+```{r}
+# Elbow Method for finding the optimal number of clusters
+set.seed(123)
+# Compute and plot wss for k = 2 to k = 8.
+k.max <- 8
+data <- scaled_data
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 15 )$tot.withinss})
+wss
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+
+# looks like the most obvious elbow is at 2! we will create 3 customer segments. 
+```
+
+```{r}
+# CLUSTERING WITH K-MEANS
+
+# Clustering with 2 center (Fall vs. Spring Shoppers?)
+#k3 <- kmeans(scaled_data[,c(-1)],3,nstart = 50,iter.max = 15) # keep number of iter.max=15 to ensure the algorithm converges and nstart=50 to #ensure that at least 50 random sets are choosen  
+#k3
+
+#fviz_cluster(k3, data=scaled_data[,c(-1)],ellipse.type = "convex")+ theme_minimal() # the clusters are hard to depict since it is in 2D. Use a confusion matrix decipher the k-means
+
+```
+
+```{r}
+# cluster matrix
+print(knitr::kable(table(scaled_data[,1],k2$cluster), format="markdown"))
+
+# reattach assigned clusters to original data
+cluster_IDs <- table(scaled_data[,1],k2$cluster) # store results of k-means in new dataframe
+cluster_IDs <- as.data.frame(cluster_IDs)
+colnames (cluster_IDs) <- c("Cust_ID", "Segment", "Frequency")
+cluster_IDs <- cluster_IDs[!(cluster_IDs$Frequency==0),] # only use frequency when not equal to 0!
+
+data_clusters <- merge(cust_infoDF, cluster_IDs[, c("Cust_ID", "Segment")], by="Cust_ID")
+#write.csv(data_clusters, file = "2_segmentats_r.csv")
+
+# create tables for each segment
+segment1 <- data_clusters[!(data_clusters$Segment==2),]
+segment2 <- data_clusters[!(data_clusters$Segment==1),]
+```
+
+```{r Segment Summaries}
+segment1_salesdata <- segment1[,3:134]
+is.na(segment1_salesdata) <- segment1_salesdata==0 #make 0's na's so they don't negatively skew the avg
+colMeans(segment1_salesdata,  na.rm = TRUE, dims = 1)
+
+segment2_salesdata <- segment2[,3:134]
+is.na(segment2_salesdata) <- segment2_salesdata==0 #make 0's na's so they don't negatively skew the avg
+colMeans(segment2_salesdata,  na.rm = TRUE, dims = 1)
+
+segment1_demographics <- segment1[,135:170]
+summary(segment1_demographics)
+
+segment2_demographics <- segment2[,135:170]
+summary(segment2_demographics)
+
+# count occupation codes in each segment
+library(plyr)
+count(segment1_demographics, "OccupCd")
+count(segment2_demographics, "OccupCd")
+```
+
+```{r Coding Customers by Channel}
+retail_cust <- cust_infoDF[c("Cust_ID", "RetF07Trips", "RetS07Trips", "RetF06Trips", "RetS05Trips","RetF05Trips", "RetS05Trips","RetF04Trips", "RetS04Trips", "RetPre04Trips")]
+
+retail_cust$retail=rowSums(retail_cust[,c(-1)])
+
+retail_cust$retail[retail_cust$retail!= 0] <- 1
+retail_cust$retail
+
+internet_cust <-cust_infoDF[c("Cust_ID","IntF07Orders", "IntS07Orders", "IntF06Orders", "IntS06Orders","IntF05Orders", "IntS05Orders","IntF04Orders", "IntS04Orders", "IntPre04Orders")]
+
+internet_cust$internet=rowSums(internet_cust[,c(-1)])
+
+internet_cust$internet[internet_cust$internet!= 0] <- 1
+internet_cust$internet
+
+catalog_cust <-cust_infoDF[c("Cust_ID","CatF07Orders", "CatS07Orders", "CatF06Orders", "CatS06Orders","CatF05Orders", "CatS05Orders","CatF04Orders", "CatS04Orders", "CatPre04Orders")]
+
+catalog_cust$catalog=rowSums(catalog_cust[,c(-1)])
+
+catalog_cust$catalog[catalog_cust$catalog!= 0] <- 1
+catalog_cust$catalog
+
+
+# DF for First Channel to code columns
+FirstChannel_DF <- cust_infoDF[c("Cust_ID", "FirstChannel")]
+
+FirstChannel_DF$Retail <-FirstChannel_DF$FirstChannel
+FirstChannel_DF$Retail[FirstChannel_DF$Retail!= 3] <- 0
+FirstChannel_DF$Retail
+FirstChannel_DF$Retail[FirstChannel_DF$Retail!= 0] <- 1
+FirstChannel_DF$Retail
+
+FirstChannel_DF$Internet<-FirstChannel_DF$FirstChannel
+FirstChannel_DF$Internet[FirstChannel_DF$Internet!= 2] <- 0
+FirstChannel_DF$Internet
+FirstChannel_DF$Internet[FirstChannel_DF$Internet!= 0] <- 1
+FirstChannel_DF$Internet
+
+FirstChannel_DF$Catalog<-FirstChannel_DF$FirstChannel
+FirstChannel_DF$Catalog[FirstChannel_DF$Catalog!= 1] <- 0
+FirstChannel_DF$Catalog
+
+
+ChannelLoyalty_DF <- cbind(cust_infoDF$Cust_ID, FirstChannel_DF$Retail, FirstChannel_DF$Internet, FirstChannel_DF$Catalog, cust_infoDF$FirstDollar, cust_infoDF$StoreDist, cust_infoDF$Email,cust_infoDF$AgeCode,cust_infoDF$IncCode,cluster_IDs$Segment,retail_cust$retail,internet_cust$internet,catalog_cust$catalog)
+
+colnames(ChannelLoyalty_DF) <- c("Cust_ID", "FC_Retail", "FC_Internet", "FC_Catalog", "FirstDollar", "StoreDist", "Email", "Age", "Income", "Segment", "Retail", "Internet", "Catalog")
+
+sum(catalog_cust$catalog)+sum(internet_cust$internet)+sum(retail_cust$retail)
+
+#write.csv(ChannelLoyalty_DF, file = "channelloyalty.csv")
+```
+
+
+```{r}
+Orders <- read.csv("DMEFExtractOrdersV01.CSV")
+Orders_upduped<- Orders
+Orders_upduped$OrderDate = substr(Orders_upduped$OrderDate ,1,nchar(Orders_upduped$OrderDate)-4) #make date only year
+Orders_upduped<- Orders_upduped[Orders_upduped$OrderDate ==2007,] #keep only values = 2007
+duplicated(Orders_upduped$Cust_ID)
+
+Orders_upduped <- Orders_upduped[!duplicated(Orders_upduped$Cust_ID), ] #get rid of duplicates
+duplicated(Orders_upduped$Cust_ID) #check
+
+internet_orders <-cust_infoDF[c("Cust_ID","IntF07Orders", "IntS07Orders")]
+
+internet_orders$orders=rowSums(internet_cust[,c(-1)])
+
+internet2007 <- merge(internet_orders[,c("Cust_ID","orders")], Orders_upduped[, c("Cust_ID", "OrderDate")], by="Cust_ID")
+
+write.csv(internet2007, file = "internet2007.csv")
+
+```
