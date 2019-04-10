@@ -1,4 +1,5 @@
-Required Softare: Python
+Required Softare: Python, Google Colab, FBProphet
+** Recommend running notebook in Google Colab
 
 ZIP_ZHVI_SINGLEFAMILYRESIDENCE.CSV (DATA)
 INSTRUCTIONS.PDF
